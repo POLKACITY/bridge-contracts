@@ -6,8 +6,8 @@ import "./Managed.sol";
 
 contract BridgeLog is Managed {
 
-  event IncomingTX (address indexed wallet, uint256 amount, uint256 logId);
-  event OutgoingTX (address indexed wallet, uint256 amount, uint256 logId);
+  event Incoming (address indexed wallet, uint256 amount, uint256 logId);
+  event Outgoing (address indexed wallet, uint256 amount, uint256 logId);
   struct OutgoingLog {
     address wallet;
     uint256 amount;
@@ -26,11 +26,10 @@ contract BridgeLog is Managed {
     uint256 logIndex;
   }
 
-  mapping(uint256 => OutgoingLog) outgoingTx;
-  mapping(uint256 => IncomingLog) incomingTx;
+  mapping(uint256 => OutgoingLog) public outgoingTx;
+  mapping(uint256 => IncomingLog) public incomingTx;
   mapping(bytes32 => uint256) public withdrawals;
   mapping(address => bool) public loggers;
-  mapping(uint256 => bool) availableChains;
   uint256 public outgoingIndex;
   uint256 public incomingIndex;
 
@@ -38,10 +37,12 @@ contract BridgeLog is Managed {
     managers[0x00d6E1038564047244Ad37080E2d695924F8515B] = true;
   }
 
+  // set the contracts allowed to create logs
   function setLogger(address _logger, bool _canLog) public onlyManagers {
     loggers[_logger] = _canLog;
   }
 
+  // log bridge transfers send from current chain to any other
   function outgoing(address _wallet, uint256 _amount, uint256 _fee, uint256 _chainID, uint256 _bridgeIndex) public {
     require(loggers[msg.sender] == true, "Invalid caller");
     outgoingIndex += 1;
@@ -54,9 +55,10 @@ contract BridgeLog is Managed {
       _bridgeIndex
     );
     outgoingTx[outgoingIndex] = _outgoing;
-    emit OutgoingTX(_wallet, _amount, outgoingIndex);
+    emit Outgoing(_wallet, _amount, outgoingIndex);
   }
 
+  // log bridge transfers received on this chain
   function incoming(address _wallet, uint256 _amount, uint256 _fee, uint256 _chainID, uint256 _logIndex, bytes32 txHash) public {
     require(loggers[msg.sender] == true, "Invalid caller");
     require(!withdrawalCompleted(txHash), "Withdrawal already completed");
@@ -71,7 +73,7 @@ contract BridgeLog is Managed {
     );
     incomingTx[incomingIndex] = _incoming;
     withdrawals[txHash] = incomingIndex;
-    emit IncomingTX(_wallet, _amount, incomingIndex);
+    emit Incoming(_wallet, _amount, incomingIndex);
   }
 
   function getIncomingTx(uint256 _index) public view returns (address wallet, uint256 amount, uint256 fee, uint256 date, uint256 chainID, uint256 logIndex) {
@@ -98,6 +100,7 @@ contract BridgeLog is Managed {
     );
   }
 
+  // check if the incoming transfer withdrawal is completed
   function withdrawalCompleted(bytes32 _withdrawalId) public view returns (bool completed) {
     return (withdrawals[_withdrawalId] > 0);
   }

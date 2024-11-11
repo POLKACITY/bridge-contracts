@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity ^0.8.7;
+pragma solidity 0.8.7;
 
 import "./IERC20Token.sol";
 import "./IBridgeLog.sol";
 import "./Managed.sol";
+
+// signature verification library
 
 library ECDSA {
   function recover(bytes32 hash, bytes memory signature) internal pure returns (address) {
@@ -58,13 +60,12 @@ library ECDSA {
 contract POLCBridgeMinter is Managed {
   IERC20Token private polcToken;
   IBridgeLog private logger;
-  address signer;
-  uint256 chainID;
-  address platformWallet;
-  address banksWallet;
-  address polcVault;
-  uint256 txMode; // 0 minting, 1 transfer
-  bool paused;
+  address private signer;
+  uint256 private chainID;
+  address public platformWallet;
+  address public banksWallet;
+  address public polcVault;
+  uint256 private txMode; // 0 minting, 1 transfer
   
   constructor() {
     polcToken = IERC20Token(0xCcd0B2659d46a0042f42F4Cb00401D7cA24326bd);
@@ -77,6 +78,7 @@ contract POLCBridgeMinter is Managed {
     managers[0x00d6E1038564047244Ad37080E2d695924F8515B] = true;
   }
 
+  // verify transaction signature to ensure signer is valid
   function verifyTXCall(bytes32 _taskHash, bytes memory _sig) public view returns (bool valid) {
     address mSigner = ECDSA.recover(ECDSA.toEthSignedMessageHash(_taskHash), _sig);
     if (mSigner == signer) {
@@ -86,9 +88,14 @@ contract POLCBridgeMinter is Managed {
     }
   }
 
+  // users will withdraw their assets with a pre-signed hash validation
   function withdraw(address _wallet, uint256 _amount, uint256 _fee, uint256 _chainFrom, uint256 _chainTo, uint256 _logIndex, bytes memory _sig) public {
-    require(!paused, "Contract is paused");
+
     require(_chainTo == chainID, "Invalid chain");
+    if (txMode == 1) {
+      require(polcToken.allowance(polcVault, address(this)) >= _amount, "Vault need increase allowance");
+      require(polcToken.balanceOf(polcVault) >= _amount, "Vault balance is too low");
+    }
     bytes32 txHash = keccak256(abi.encode(_wallet, _amount, _fee, _chainFrom, _chainTo, _logIndex));
     bool txv = verifyTXCall(txHash, _sig);
     require (txv == true, "Invalid signature");
@@ -113,30 +120,32 @@ contract POLCBridgeMinter is Managed {
     }
   }
 
+  // administrative variables update
   function setLogger (address _logger) public onlyManagers {
+    require(_logger != address(0), "Invalid address");
     logger = IBridgeLog(_logger);
   }
   
   function setSigner (address _signer) public onlyManagers {
+    require(_signer != address(0), "Invalid address");
     signer = _signer;
   }
 
   function setBanksWallet(address _wallet) public onlyManagers {
+    require(_wallet != address(0), "Invalid address");
     banksWallet = _wallet;
   }
 
   function setVault(address _wallet) public onlyManagers {
+    require(_wallet != address(0), "Invalid address");
     polcVault = _wallet;
   }
 
   function setPlatformWallet(address _wallet) public onlyManagers {
+    require(_wallet != address(0), "Invalid address");
     platformWallet = _wallet;
   }
   
-  function pauseContract(bool _paused) public onlyManagers {
-    paused = _paused;
-  }
-
   function setMode(uint256 _mode) public onlyManagers {
     txMode = _mode;
   }
